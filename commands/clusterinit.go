@@ -97,6 +97,7 @@ func clusterInitAction(c *cli.Context) {
     sort.Strings(nodes)
 
     // check nodes init state and cache node client
+    currVer := -1
     for _, node := range nodes {
     	client := rocks.NewClient(&rocks.Options{
 	        Addr: node,
@@ -106,9 +107,8 @@ func clusterInitAction(c *cli.Context) {
 	    	fmt.Println("node: ", node, " clusterx version err: ", err)
 	    	os.Exit(1)
 	    }
-	    if ver.(string) != "-1" {
-	    	fmt.Println("node: ", node, " clusterx version : ", ver, " not -1")
-	    	os.Exit(1)
+	    if numVer, _ := strconv.Atoi(ver.(string)); numVer > currVer {
+	    	currVer = numVer
 	    }
 	    clientMap[node] = client
 
@@ -117,6 +117,7 @@ func clusterInitAction(c *cli.Context) {
 		bytes := c.Sum(nil)
 		nodeIdMap[node] = hex.EncodeToString(bytes)
     }
+    currVer++
     fmt.Println("nodes and shard check ok")
 
     replicates := MakeReplicates(nodes, shard)
@@ -125,12 +126,23 @@ func clusterInitAction(c *cli.Context) {
 
     if do {
     	for node, cli := range clientMap {
-    		if _, err := cli.Do(ctx, "clusterx", "setnodes", cmd, "0", "force").Result(); err != nil {
+    		res, err := cli.Do(ctx, "clusterx", "setnodes", cmd, strconv.Itoa(currVer), "force").Result()
+    		if err != nil {
     			fmt.Println("clusterx setnodes err: ", err, "node: ", node)
 	    		os.Exit(1)
     		}
+    		fmt.Println("clusterx setnodes:", node, res.(string))
     	}
-    	fmt.Println("cluster init success!")
+
+    	for node, id := range nodeIdMap {
+    		res, err := clientMap[node].Do(ctx, "clusterx", "setnodeid", id).Result()
+    		if err != nil {
+    			fmt.Println("clusterx setnodeid err: ", err, "node: ", node)
+	    		os.Exit(1)
+    		}
+    		fmt.Println("clusterx setnodeid:", node, res.(string))
+    	}
+    	fmt.Println("cluster init success!!!")
     }
 }
 
